@@ -2,95 +2,157 @@
 #include <MFRC522.h>
 #include <Servo.h>
 
-// Define pins for RFID
-#define SS_PIN 10
-#define RST_PIN 9
-int LED = 2;
-MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance
+// Pin definitions
+const int SS_PIN = 10;             // SPI SS pin for RFID module
+const int RST_PIN = 9;             // Reset pin for RFID module
+const int LED_PIN = 2;             // LED indicator pin
+const int SERVO_PIN = 3;           // Servo control pin
+const int LOCK_EXTENDED_PIN = 4;   // Limit switch pin for fully locked position
+const int LOCK_RETRACTED_PIN = 5;  // Limit switch pin for fully unlocked position
 
-// Define the Servo object
-Servo myServo;
+// RFID and Servo objects
+MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
+Servo lockServo;                   // Create Servo instance
 
-const String correctID = "C384B1FE"; // Your correct RFID tag ID
-const int servoPin = 3; // Change to the PWM pin you're using
-const int lockExtended = 4;   // Pin for the limit switch at the lock position
-const int lockRetracted = 5; // Pin for the limit switch at the unlock position
-bool isLocked = false;  // Track the current state of the lock
+// Constants
+const String CORRECT_ID = "C384B1FE";  // Authorized RFID tag ID
+const int SERVO_LOCK_POSITION = 0;     // Servo angle for locking direction
+const int SERVO_UNLOCK_POSITION = 180; // Servo angle for unlocking direction
+const int SERVO_STOP = 90;             // Servo angle to stop movement
+const unsigned long BLINK_INTERVAL = 300; // LED blink interval in milliseconds
+
+// State variable
+bool isLocked = false;              // Current lock state
 
 void setup() {
-  Serial.begin(9600);  // Initialize serial communications
-  SPI.begin();         // Init SPI bus
-  mfrc522.PCD_Init();  // Init MFRC522 card
-  myServo.attach(servoPin); // Attach servo motor to pin 3
-  //myServo.write(0);
-  pinMode(LED, OUTPUT);      // Set the LED pin as output
-  pinMode(lockExtended, INPUT_PULLUP);    // Set the lock limit switch pin as input
-  pinMode(lockRetracted, INPUT_PULLUP);  // Set the unlock limit switch pin as input
+  initializePins();
+  initializeSerialAndRFID();
+  determineInitialLockState();
   Serial.println("Place your RFID tag on the reader...");
 }
 
 void loop() {
-  // Look for new cards
-  if (!mfrc522.PICC_IsNewCardPresent()) {
-    return;
+  if (isNewCardPresent() && readCardSerial()) {
+    String cardID = getCardID();
+    processCard(cardID);
   }
+}
 
-  // Select one of the cards
-  if (!mfrc522.PICC_ReadCardSerial()) {
-    return;
-  }
+// Initialize all pins
+void initializePins() {
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(LOCK_EXTENDED_PIN, INPUT_PULLUP);
+  pinMode(LOCK_RETRACTED_PIN, INPUT_PULLUP);
+  lockServo.attach(SERVO_PIN);
+}
 
-  // Dump UID
-  String readID = "";
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    readID += String(mfrc522.uid.uidByte[i], HEX);
-  }
+// Initialize Serial communication and RFID module
+void initializeSerialAndRFID() {
+  Serial.begin(9600);
+  SPI.begin();
+  mfrc522.PCD_Init();
+}
 
-  readID.toUpperCase(); // Convert to uppercase for comparison
-  Serial.print("RFID tag ID: ");
-  Serial.println(readID);
-
-  // Compare the read ID with the correct ID
-  if (readID == correctID && isLocked) {
-    Serial.println("Correct RFID tag detected! Unlocking...");
-    digitalWrite(LED, HIGH);
-
-    while (digitalRead(lockRetracted) == HIGH) {
-      // until the unlock limit switch is triggered, retract the lock
-      myServo.write(180); // Start rotating clockwise to unlock
-    }
-    myServo.write(90); // Stop servo (neutral position)
-    isLocked = false;  // Update lock state
-    Serial.println("Unocked!");
-    digitalWrite(LED, LOW);
-
-
-  }else if(readID == correctID && !isLocked){
-    Serial.println("Correct RFID tag detected! Locking...");
-    digitalWrite(LED, HIGH);
-    while (digitalRead(lockExtended) == HIGH) {
-      // Until the lock limit switch is triggered, extend the lock
-      myServo.write(0);  // Start rotating anti-clockwise to lock
-    }
-    myServo.write(90); // Stop servo (neutral position)
-    isLocked = true;   // Update lock state
-    Serial.println("Unlocked!");
-    digitalWrite(LED, LOW);
-
-
+// Determine and set the initial state of the lock
+void determineInitialLockState() {
+  if (isFullyLocked()) {
+    isLocked = true;
+    Serial.println("Initial state: Locked");
+  } else if (isFullyUnlocked()) {
+    isLocked = false;
+    Serial.println("Initial state: Unlocked");
   } else {
-    Serial.println("Incorrect RFID tag.");
-    digitalWrite(LED, HIGH);
-    delay(300);
-    digitalWrite(LED, LOW);
-    delay(300);
-    digitalWrite(LED, HIGH);
-    delay(400);
-    digitalWrite(LED, LOW);
+    moveToUnlockedPosition();
   }
+  lockServo.write(SERVO_STOP);
+}
 
-  // Halt PICC (Anti-collision loop) 
+// Check if the lock is fully locked (both switches unpressed)
+bool isFullyLocked() {
+  return digitalRead(LOCK_EXTENDED_PIN) == HIGH && digitalRead(LOCK_RETRACTED_PIN) == HIGH;
+}
+
+// Check if the lock is fully unlocked (both switches pressed)
+bool isFullyUnlocked() {
+  return digitalRead(LOCK_EXTENDED_PIN) == LOW && digitalRead(LOCK_RETRACTED_PIN) == LOW;
+}
+
+// Move the lock to the unlocked position
+void moveToUnlockedPosition() {
+  Serial.println("Initial state ambiguous. Moving to unlocked position...");
+  while (!isFullyUnlocked()) {
+    lockServo.write(SERVO_UNLOCK_POSITION);
+  }
+  lockServo.write(SERVO_STOP);
+  isLocked = false;
+  Serial.println("Moved to unlocked position");
+}
+
+// Check if a new RFID card is present
+bool isNewCardPresent() {
+  return mfrc522.PICC_IsNewCardPresent();
+}
+
+// Try to read the RFID card serial
+bool readCardSerial() {
+  return mfrc522.PICC_ReadCardSerial();
+}
+
+// Get the ID of the scanned RFID card
+String getCardID() {
+  String cardID = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    cardID += String(mfrc522.uid.uidByte[i], HEX);
+  }
+  cardID.toUpperCase();
+  Serial.println("RFID tag ID: " + cardID);
+  return cardID;
+}
+
+// Process the scanned card
+void processCard(const String& cardID) {
+  if (cardID == CORRECT_ID) {
+    if (isLocked) {
+      unlock();
+    } else {
+      lock();
+    }
+  } else {
+    indicateIncorrectCard();
+  }
   mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();      // Stop encryption on the PCD (reader)
-  delay(1000); // Wait a second for easier reading
+  mfrc522.PCD_StopCrypto1();
+}
+
+// Unlock the lock
+void unlock() {
+  Serial.println("Correct RFID tag detected! Unlocking...");
+  while (!isFullyUnlocked()) {
+    lockServo.write(SERVO_UNLOCK_POSITION);
+  }
+  lockServo.write(SERVO_STOP);
+  isLocked = false;
+  Serial.println("Unlocked!");
+}
+
+// Lock the lock
+void lock() {
+  Serial.println("Correct RFID tag detected! Locking...");
+  while (!isFullyLocked()) {
+    lockServo.write(SERVO_LOCK_POSITION);
+  }
+  lockServo.write(SERVO_STOP);
+  isLocked = true;
+  Serial.println("Locked!");
+}
+
+// Indicate an incorrect card was scanned
+void indicateIncorrectCard() {
+  Serial.println("Incorrect RFID tag.");
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(BLINK_INTERVAL);
+    digitalWrite(LED_PIN, LOW);
+    delay(BLINK_INTERVAL);
+  }
 }
