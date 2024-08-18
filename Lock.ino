@@ -9,6 +9,7 @@ const int LED_PIN = 2;             // LED indicator pin
 const int SERVO_PIN = 3;           // Servo control pin
 const int LOCK_EXTENDED_PIN = 4;   // Limit switch pin for fully locked position
 const int LOCK_RETRACTED_PIN = 5;  // Limit switch pin for fully unlocked position
+const int LOCK_DISABLE_PIN = 7;    // To disable lock system when the machine is ON
 
 // RFID and Servo objects
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
@@ -29,12 +30,28 @@ void setup() {
   initializeSerialAndRFID();
   determineInitialLockState();
   Serial.println("Place your RFID tag on the reader...");
+  //Serial.println(digitalRead(LOCK_DISABLE_PIN));
+  //lockServo.write(0); //Out
+  //lockServo.write(180); //In
 }
 
 void loop() {
+  checkLockState();
   if (isNewCardPresent() && readCardSerial()) {
     String cardID = getCardID();
     processCard(cardID);
+  }
+}
+
+void checkLockState(){
+  if (isLocked && digitalRead(LOCK_DISABLE_PIN) == HIGH){
+    Serial.println("Turn OFF Key!");
+    for (int i = 0; i < 5; i++) {
+      digitalWrite(LED_PIN, HIGH);
+      delay(BLINK_INTERVAL);
+      digitalWrite(LED_PIN, LOW);
+      delay(BLINK_INTERVAL);
+    }
   }
 }
 
@@ -43,6 +60,7 @@ void initializePins() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(LOCK_EXTENDED_PIN, INPUT_PULLUP);
   pinMode(LOCK_RETRACTED_PIN, INPUT_PULLUP);
+  pinMode(LOCK_DISABLE_PIN, INPUT);
   lockServo.attach(SERVO_PIN);
 }
 
@@ -115,7 +133,15 @@ void processCard(const String& cardID) {
     if (isLocked) {
       unlock();
     } else {
-      lock();
+      Serial.print("Key pin state before locking: ");
+      Serial.println(digitalRead(LOCK_DISABLE_PIN)); //To make sure the machine is not ON when locking
+      if (digitalRead(LOCK_DISABLE_PIN) == LOW){    //For safety issues
+        lock();
+      }
+      else {
+        Serial.println(("Lock disabled! Key is still ON"));
+        indicateLockingDisabled();
+      }
     }
   } else {
     indicateIncorrectCard();
@@ -123,6 +149,21 @@ void processCard(const String& cardID) {
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
 }
+
+// Process the scanned card
+// void processCard(const String& cardID) {
+//   if (cardID == CORRECT_ID) {
+//     if (isLocked) {
+//       unlock();
+//     } else {
+//       lock();
+//     }
+//   } else {
+//     indicateIncorrectCard();
+//   }
+//   mfrc522.PICC_HaltA();
+//   mfrc522.PCD_StopCrypto1();
+// }
 
 // Unlock the lock
 void unlock() {
@@ -146,10 +187,21 @@ void lock() {
   Serial.println("Locked!");
 }
 
+//Idicate Locking disabled
+void indicateLockingDisabled(){
+  for (int i =0; i < 2; i++){
+    digitalWrite(LED_PIN, HIGH);
+    delay(BLINK_INTERVAL * 2);
+    digitalWrite(LED_PIN,  LOW);
+    delay(BLINK_INTERVAL);
+  }
+}
+
+
 // Indicate an incorrect card was scanned
 void indicateIncorrectCard() {
   Serial.println("Incorrect RFID tag.");
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 2; i++) {
     digitalWrite(LED_PIN, HIGH);
     delay(BLINK_INTERVAL);
     digitalWrite(LED_PIN, LOW);
