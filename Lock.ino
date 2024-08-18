@@ -10,6 +10,7 @@ const int SERVO_PIN = 3;           // Servo control pin
 const int LOCK_EXTENDED_PIN = 4;   // Limit switch pin for fully locked position
 const int LOCK_RETRACTED_PIN = 5;  // Limit switch pin for fully unlocked position
 const int LOCK_DISABLE_PIN = 7;    // To disable lock system when the machine is ON
+const int IR_SENSOR_PIN = 6;       // Digital input pin for IR sensor module
 
 // RFID and Servo objects
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
@@ -30,28 +31,12 @@ void setup() {
   initializeSerialAndRFID();
   determineInitialLockState();
   Serial.println("Place your RFID tag on the reader...");
-  //Serial.println(digitalRead(LOCK_DISABLE_PIN));
-  //lockServo.write(0); //Out
-  //lockServo.write(180); //In
 }
 
 void loop() {
-  checkLockState();
   if (isNewCardPresent() && readCardSerial()) {
     String cardID = getCardID();
     processCard(cardID);
-  }
-}
-
-void checkLockState(){
-  if (isLocked && digitalRead(LOCK_DISABLE_PIN) == HIGH){
-    Serial.println("Turn OFF Key!");
-    for (int i = 0; i < 5; i++) {
-      digitalWrite(LED_PIN, HIGH);
-      delay(BLINK_INTERVAL);
-      digitalWrite(LED_PIN, LOW);
-      delay(BLINK_INTERVAL);
-    }
   }
 }
 
@@ -61,6 +46,7 @@ void initializePins() {
   pinMode(LOCK_EXTENDED_PIN, INPUT_PULLUP);
   pinMode(LOCK_RETRACTED_PIN, INPUT_PULLUP);
   pinMode(LOCK_DISABLE_PIN, INPUT);
+  pinMode(IR_SENSOR_PIN, INPUT);
   lockServo.attach(SERVO_PIN);
 }
 
@@ -131,15 +117,22 @@ String getCardID() {
 void processCard(const String& cardID) {
   if (cardID == CORRECT_ID) {
     if (isLocked) {
-      unlock();
-    } else {
-      Serial.print("Key pin state before locking: ");
-      Serial.println(digitalRead(LOCK_DISABLE_PIN)); //To make sure the machine is not ON when locking
-      if (digitalRead(LOCK_DISABLE_PIN) == LOW){    //For safety issues
-        lock();
+      if (digitalRead(LOCK_DISABLE_PIN) == LOW) {
+        unlock();
+      } else {
+        Serial.println("Unlock disabled! Key is still ON");
+        indicateLockingDisabled();
       }
-      else {
-        Serial.println(("Lock disabled! Key is still ON"));
+    } else {
+      if (digitalRead(LOCK_DISABLE_PIN) == LOW) {
+        if (!isObstacleDetected()) {
+          lock();
+        } else {
+          Serial.println("Obstacle detected! Cannot lock.");
+          indicateObstacleDetected();
+        }
+      } else {
+        Serial.println("Lock disabled! Key is still ON");
         indicateLockingDisabled();
       }
     }
@@ -149,21 +142,6 @@ void processCard(const String& cardID) {
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
 }
-
-// Process the scanned card
-// void processCard(const String& cardID) {
-//   if (cardID == CORRECT_ID) {
-//     if (isLocked) {
-//       unlock();
-//     } else {
-//       lock();
-//     }
-//   } else {
-//     indicateIncorrectCard();
-//   }
-//   mfrc522.PICC_HaltA();
-//   mfrc522.PCD_StopCrypto1();
-// }
 
 // Unlock the lock
 void unlock() {
@@ -180,6 +158,11 @@ void unlock() {
 void lock() {
   Serial.println("Correct RFID tag detected! Locking...");
   while (!isFullyLocked()) {
+    if (isObstacleDetected()) {
+      Serial.println("Obstacle detected during locking! Stopping.");
+      lockServo.write(SERVO_STOP);
+      return;
+    }
     lockServo.write(SERVO_LOCK_POSITION);
   }
   lockServo.write(SERVO_STOP);
@@ -187,21 +170,36 @@ void lock() {
   Serial.println("Locked!");
 }
 
-//Idicate Locking disabled
-void indicateLockingDisabled(){
-  for (int i =0; i < 2; i++){
+// Check if an obstacle is detected by the IR sensor
+bool isObstacleDetected() {
+  return digitalRead(IR_SENSOR_PIN) == LOW;
+}
+
+// Indicate locking disabled
+void indicateLockingDisabled() {
+  for (int i = 0; i < 2; i++) {
     digitalWrite(LED_PIN, HIGH);
     delay(BLINK_INTERVAL * 2);
-    digitalWrite(LED_PIN,  LOW);
+    digitalWrite(LED_PIN, LOW);
     delay(BLINK_INTERVAL);
   }
 }
-
 
 // Indicate an incorrect card was scanned
 void indicateIncorrectCard() {
   Serial.println("Incorrect RFID tag.");
   for (int i = 0; i < 2; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(BLINK_INTERVAL);
+    digitalWrite(LED_PIN, LOW);
+    delay(BLINK_INTERVAL);
+  }
+}
+
+// Indicate an obstacle was detected
+void indicateObstacleDetected() {
+  Serial.println("Obstacle detected.");
+  for (int i = 0; i < 3; i++) {
     digitalWrite(LED_PIN, HIGH);
     delay(BLINK_INTERVAL);
     digitalWrite(LED_PIN, LOW);
