@@ -30,10 +30,13 @@ void setup() {
   initializePins();
   initializeSerialAndRFID();
   determineInitialLockState();
+  Serial.print("Pin State ");
+  Serial.println(digitalRead(LOCK_DISABLE_PIN));
   Serial.println("Place your RFID tag on the reader...");
 }
 
 void loop() {
+
   if (isNewCardPresent() && readCardSerial()) {
     String cardID = getCardID();
     processCard(cardID);
@@ -120,20 +123,22 @@ void processCard(const String& cardID) {
       if (digitalRead(LOCK_DISABLE_PIN) == LOW) {
         unlock();
       } else {
-        Serial.println("Unlock disabled! Key is still ON");
+        Serial.print("Unlock disabled! Key is still ON. pin State: ");
+        Serial.println(digitalRead(LOCK_DISABLE_PIN));
         indicateLockingDisabled();
       }
     } else {
-      if (digitalRead(LOCK_DISABLE_PIN) == LOW) {
-        if (!isObstacleDetected()) {
+      if (!isObstacleDetected()) {
+        if (digitalRead(LOCK_DISABLE_PIN) == LOW) {
           lock();
         } else {
-          Serial.println("Obstacle detected! Cannot lock.");
-          indicateObstacleDetected();
+          Serial.print("Lock disabled!!! Key is still ON. pin State ");
+          Serial.println(digitalRead(LOCK_DISABLE_PIN));
+          indicateLockingDisabled();
         }
       } else {
-        Serial.println("Lock disabled! Key is still ON");
-        indicateLockingDisabled();
+        Serial.println("Obstacle detected! Cannot lock.");
+        indicateObstacleDetected();
       }
     }
   } else {
@@ -153,6 +158,7 @@ void unlock() {
   isLocked = false;
   Serial.println("Unlocked!");
 }
+//Buzzer at lock and obstacle
 
 // Lock the lock
 void lock() {
