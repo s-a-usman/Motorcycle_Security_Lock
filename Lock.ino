@@ -5,12 +5,13 @@
 // Pin definitions
 const int SS_PIN = 10;             // SPI SS pin for RFID module
 const int RST_PIN = 9;             // Reset pin for RFID module
-const int LED_PIN = 2;             // LED indicator pin
+const int RED_LED_PIN = 2;             // LED indicator pin
 const int SERVO_PIN = 3;           // Servo control pin
 const int LOCK_EXTENDED_PIN = 4;   // Limit switch pin for fully locked position
 const int LOCK_RETRACTED_PIN = 5;  // Limit switch pin for fully unlocked position
 const int LOCK_DISABLE_PIN = 7;    // To disable lock system when the machine is ON
 const int IR_SENSOR_PIN = 6;       // Digital input pin for IR sensor module
+const int BUZZER_PIN = A5;          // New pin for blinking along with LEDs
 
 // RFID and Servo objects
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
@@ -45,7 +46,7 @@ void loop() {
 
 // Initialize all pins
 void initializePins() {
-  pinMode(LED_PIN, OUTPUT);
+  pinMode(RED_LED_PIN, OUTPUT);
   pinMode(LOCK_EXTENDED_PIN, INPUT_PULLUP);
   pinMode(LOCK_RETRACTED_PIN, INPUT_PULLUP);
   pinMode(LOCK_DISABLE_PIN, INPUT);
@@ -184,9 +185,9 @@ bool isObstacleDetected() {
 // Indicate locking disabled
 void indicateLockingDisabled() {
   for (int i = 0; i < 2; i++) {
-    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, HIGH);
     delay(BLINK_INTERVAL * 2);
-    digitalWrite(LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, LOW);
     delay(BLINK_INTERVAL);
   }
 }
@@ -195,9 +196,9 @@ void indicateLockingDisabled() {
 void indicateIncorrectCard() {
   Serial.println("Incorrect RFID tag.");
   for (int i = 0; i < 2; i++) {
-    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, HIGH);
     delay(BLINK_INTERVAL);
-    digitalWrite(LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, LOW);
     delay(BLINK_INTERVAL);
   }
 }
@@ -206,9 +207,9 @@ void indicateIncorrectCard() {
 void indicateObstacleDetected() {
   Serial.println("Obstacle detected.");
   for (int i = 0; i < 3; i++) {
-    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, HIGH);
     delay(BLINK_INTERVAL);
-    digitalWrite(LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, LOW);
     delay(BLINK_INTERVAL);
   }
 }
