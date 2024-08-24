@@ -1,3 +1,17 @@
+ 
+ /* Typical pin layout used:
+ * -----------------------------------------------------------------------------------------
+ *             MFRC522      Arduino       Arduino   Arduino    Arduino          Arduino
+ *             Reader/PCD   Uno/101       Mega      Nano v3    Leonardo/Micro   Pro Micro
+ * Signal      Pin          Pin           Pin       Pin        Pin              Pin
+ * -----------------------------------------------------------------------------------------
+ * RST/Reset   RST          9             5         D9         RESET/ICSP-5     RST
+ * SPI SS      SDA(SS)      10            53        D10        10               10
+ * SPI MOSI    MOSI         11 / ICSP-4   51        D11        ICSP-4           16
+ * SPI MISO    MISO         12 / ICSP-1   50        D12        ICSP-1           14
+ * SPI SCK     SCK          13 / ICSP-3   52        D13        ICSP-3           15
+ */
+
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Servo.h>
@@ -5,11 +19,15 @@
 // Pin definitions
 const int SS_PIN = 10;             // SPI SS pin for RFID module
 const int RST_PIN = 9;             // Reset pin for RFID module
-const int LED_PIN = 2;             // LED indicator pin
+const int RED_LED_PIN = 2;         // Red LED indicator pin
+const int GREEN_LED_PIN = 8;       // Green LED indicator pin
 const int SERVO_PIN = 3;           // Servo control pin
 const int LOCK_EXTENDED_PIN = 4;   // Limit switch pin for fully locked position
 const int LOCK_RETRACTED_PIN = 5;  // Limit switch pin for fully unlocked position
 const int LOCK_DISABLE_PIN = 7;    // To disable lock system when the machine is ON
+const int IR_SENSOR_PIN = 6;       // Digital input pin for IR sensor module
+const int BUZZER_PIN = A5;         // Buzzer pin for blinking along with LEDs
+const int RELAY_PIN = A4;         // Relay pin for powering external alarm along with LEDs
 
 // RFID and Servo objects
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
@@ -22,45 +40,36 @@ const int SERVO_UNLOCK_POSITION = 180; // Servo angle for unlocking direction
 const int SERVO_STOP = 90;             // Servo angle to stop movement
 const unsigned long BLINK_INTERVAL = 300; // LED blink interval in milliseconds
 
-// State variable
+// State variables
 bool isLocked = false;              // Current lock state
+unsigned long previousMillis = 0;   // Store last blink time
 
 void setup() {
   initializePins();
   initializeSerialAndRFID();
   determineInitialLockState();
+  Serial.print("Pin State ");
+  Serial.println(digitalRead(LOCK_DISABLE_PIN));
   Serial.println("Place your RFID tag on the reader...");
-  //Serial.println(digitalRead(LOCK_DISABLE_PIN));
-  //lockServo.write(0); //Out
-  //lockServo.write(180); //In
 }
 
 void loop() {
-  checkLockState();
   if (isNewCardPresent() && readCardSerial()) {
     String cardID = getCardID();
     processCard(cardID);
   }
 }
 
-void checkLockState(){
-  if (isLocked && digitalRead(LOCK_DISABLE_PIN) == HIGH){
-    Serial.println("Turn OFF Key!");
-    for (int i = 0; i < 5; i++) {
-      digitalWrite(LED_PIN, HIGH);
-      delay(BLINK_INTERVAL);
-      digitalWrite(LED_PIN, LOW);
-      delay(BLINK_INTERVAL);
-    }
-  }
-}
-
 // Initialize all pins
 void initializePins() {
-  pinMode(LED_PIN, OUTPUT);
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LOCK_EXTENDED_PIN, INPUT_PULLUP);
   pinMode(LOCK_RETRACTED_PIN, INPUT_PULLUP);
   pinMode(LOCK_DISABLE_PIN, INPUT);
+  pinMode(IR_SENSOR_PIN, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
   lockServo.attach(SERVO_PIN);
 }
 
@@ -131,16 +140,25 @@ String getCardID() {
 void processCard(const String& cardID) {
   if (cardID == CORRECT_ID) {
     if (isLocked) {
-      unlock();
-    } else {
-      Serial.print("Key pin state before locking: ");
-      Serial.println(digitalRead(LOCK_DISABLE_PIN)); //To make sure the machine is not ON when locking
-      if (digitalRead(LOCK_DISABLE_PIN) == LOW){    //For safety issues
-        lock();
-      }
-      else {
-        Serial.println(("Lock disabled! Key is still ON"));
+      if (digitalRead(LOCK_DISABLE_PIN) == LOW) {
+        unlock();
+      } else {
+        Serial.print("Unlock disabled! Key is still ON. pin State: ");
+        Serial.println(digitalRead(LOCK_DISABLE_PIN));
         indicateLockingDisabled();
+      }
+    } else {
+      if (!isObstacleDetected()) {
+        if (digitalRead(LOCK_DISABLE_PIN) == LOW) {
+          lock();
+        } else {
+          Serial.print("Lock disabled!!! Key is still ON. pin State ");
+          Serial.println(digitalRead(LOCK_DISABLE_PIN));
+          indicateLockingDisabled();
+        }
+      } else {
+        Serial.println("Obstacle detected! Cannot lock.");
+        indicateObstacleDetected();
       }
     }
   } else {
@@ -150,27 +168,16 @@ void processCard(const String& cardID) {
   mfrc522.PCD_StopCrypto1();
 }
 
-// Process the scanned card
-// void processCard(const String& cardID) {
-//   if (cardID == CORRECT_ID) {
-//     if (isLocked) {
-//       unlock();
-//     } else {
-//       lock();
-//     }
-//   } else {
-//     indicateIncorrectCard();
-//   }
-//   mfrc522.PICC_HaltA();
-//   mfrc522.PCD_StopCrypto1();
-// }
-
 // Unlock the lock
 void unlock() {
   Serial.println("Correct RFID tag detected! Unlocking...");
   while (!isFullyUnlocked()) {
     lockServo.write(SERVO_UNLOCK_POSITION);
+    blinkLEDsAndBuzzer();
   }
+  // Stop the buzzer after locking
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
   lockServo.write(SERVO_STOP);
   isLocked = false;
   Serial.println("Unlocked!");
@@ -180,31 +187,76 @@ void unlock() {
 void lock() {
   Serial.println("Correct RFID tag detected! Locking...");
   while (!isFullyLocked()) {
+    if (isObstacleDetected()) {
+      Serial.println("Obstacle detected during locking! Stopping.");
+      lockServo.write(SERVO_STOP);
+      return;
+    }
     lockServo.write(SERVO_LOCK_POSITION);
+    blinkLEDsAndBuzzer();
   }
   lockServo.write(SERVO_STOP);
   isLocked = true;
   Serial.println("Locked!");
+
+  // Stop the buzzer after locking
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, HIGH);
 }
 
-//Idicate Locking disabled
-void indicateLockingDisabled(){
-  for (int i =0; i < 2; i++){
-    digitalWrite(LED_PIN, HIGH);
-    delay(BLINK_INTERVAL * 2);
-    digitalWrite(LED_PIN,  LOW);
-    delay(BLINK_INTERVAL);
+// Blink the green LED and buzzer while locking
+void blinkLEDsAndBuzzer() {
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= BLINK_INTERVAL) {
+    previousMillis = currentMillis;
+    toggleLEDsAndBuzzer();
   }
 }
 
+// Toggle LEDs and buzzer state
+void toggleLEDsAndBuzzer() {
+  bool ledState = digitalRead(GREEN_LED_PIN);
+  digitalWrite(GREEN_LED_PIN, !ledState);
+  digitalWrite(BUZZER_PIN, !ledState);
+}
+
+// Check if an obstacle is detected by the IR sensor
+bool isObstacleDetected() {
+  return digitalRead(IR_SENSOR_PIN) == LOW;
+}
+
+// Indicate locking disabled
+void indicateLockingDisabled() {
+  for (int i = 0; i < 3; i++) {
+    blinkRedLEDAndBuzzer();
+  }
+}
 
 // Indicate an incorrect card was scanned
 void indicateIncorrectCard() {
   Serial.println("Incorrect RFID tag.");
-  for (int i = 0; i < 2; i++) {
-    digitalWrite(LED_PIN, HIGH);
-    delay(BLINK_INTERVAL);
-    digitalWrite(LED_PIN, LOW);
-    delay(BLINK_INTERVAL);
+  for (int i = 0; i < 10; i++) {
+    blinkRedLEDAndBuzzer();
+    digitalWrite(RELAY_PIN, HIGH);
+    delay(100);
+    digitalWrite(RELAY_PIN, LOW);
   }
+}
+
+// Indicate an obstacle was detected
+void indicateObstacleDetected() {
+  Serial.println("Obstacle detected.");
+  for (int i = 0; i < 4; i++) {
+    blinkRedLEDAndBuzzer();
+  }
+}
+
+// Blink red LED and buzzer with delay
+void blinkRedLEDAndBuzzer() {
+  digitalWrite(RED_LED_PIN, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(BLINK_INTERVAL);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+  delay(BLINK_INTERVAL);
 }
