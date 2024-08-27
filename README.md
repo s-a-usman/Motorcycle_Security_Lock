@@ -56,7 +56,7 @@ This project implements an advanced security system for motorcycles using Arduin
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/motorcycle-security-system.git
+   git clone https://github.com/s-a-usman/Motorcycle_Security_Lock.git
    ```
 2. Open the Arduino IDE and load the `motorcycle_security_system.ino` file.
 3. Install the following libraries through the Arduino Library Manager:
@@ -74,7 +74,7 @@ This project implements an advanced security system for motorcycles using Arduin
 
 ## 📚 Documentation
 
-For more detailed information about the system's functionality and code structure, please refer to the repository(https://github.com/s-a-usman/Lock).
+For more detailed information about the system's functionality and code structure, please refer to the repository(https://github.com/s-a-usman/Motorcycle_Security_Lock).
 
 ## 🤝 Contributing
 
@@ -92,7 +92,3 @@ If you encounter any problems or have any questions, please open an issue in thi
 
 - Thanks to all contributors who have helped to enhance this system.
 - Special thanks to the Arduino and RFID communities for their invaluable resources.
-
----
-
-Made with ❤️ for motorcycle enthusiasts and security-conscious riders everywhere.
