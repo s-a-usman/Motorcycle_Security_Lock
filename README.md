@@ -2,7 +2,7 @@
 
 ## 🏍️ Project Overview
 
-This project implements an advanced security system for motorcycles using Arduino, RFID technology, and a servo-controlled lock mechanism. It provides a robust, user-friendly way to secure a motorcycle against unauthorized use or theft.
+This project implements an advanced security system for motorcycles using a microcontroller and RFID-Controlled lock mechanism. It provides a robust, user-friendly way to secure a motorcycle against unauthorized use or theft.
 
 [Photo]
 
