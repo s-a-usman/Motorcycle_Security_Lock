@@ -20,14 +20,14 @@
 const int SS_PIN = 10;             // SPI SS pin for RFID module
 const int RST_PIN = 9;             // Reset pin for RFID module
 const int RED_LED_PIN = 2;         // Red LED indicator pin
-const int GREEN_LED_PIN = 8;       // Green LED indicator pin
+const int GREEN_LED_PIN = A4;       // Green LED indicator pin
 const int SERVO_PIN = 3;           // Servo control pin
 const int LOCK_EXTENDED_PIN = 4;   // Limit switch pin for fully locked position
 const int LOCK_RETRACTED_PIN = 5;  // Limit switch pin for fully unlocked position
 const int LOCK_DISABLE_PIN = 7;    // To disable lock system when the machine is ON
 const int IR_SENSOR_PIN = 6;       // Digital input pin for IR sensor module
 const int BUZZER_PIN = A5;         // Buzzer pin for blinking along with LEDs
-const int RELAY_PIN = A4;         // Relay pin for powering external alarm along with LEDs
+const int EXT_ALARM = A3;         // Relay pin for powering external alarm along with LEDs
 
 // RFID and Servo objects
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
@@ -38,27 +38,11 @@ const String CORRECT_ID = "C384B1FE";  // Authorized RFID tag ID
 const int SERVO_LOCK_POSITION = 0;     // Servo angle for locking direction
 const int SERVO_UNLOCK_POSITION = 180; // Servo angle for unlocking direction
 const int SERVO_STOP = 90;             // Servo angle to stop movement
-const unsigned long BLINK_INTERVAL = 300; // LED blink interval in milliseconds
+const unsigned long BLINK_INTERVAL = 610; // LED blink interval in milliseconds
 
 // State variables
 bool isLocked = false;              // Current lock state
 unsigned long previousMillis = 0;   // Store last blink time
-
-void setup() {
-  initializePins();
-  initializeSerialAndRFID();
-  determineInitialLockState();
-  Serial.print("Pin State ");
-  Serial.println(digitalRead(LOCK_DISABLE_PIN));
-  Serial.println("Place your RFID tag on the reader...");
-}
-
-void loop() {
-  if (isNewCardPresent() && readCardSerial()) {
-    String cardID = getCardID();
-    processCard(cardID);
-  }
-}
 
 // Initialize all pins
 void initializePins() {
@@ -67,9 +51,9 @@ void initializePins() {
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LOCK_EXTENDED_PIN, INPUT_PULLUP);
   pinMode(LOCK_RETRACTED_PIN, INPUT_PULLUP);
-  pinMode(LOCK_DISABLE_PIN, INPUT);
+  pinMode(LOCK_DISABLE_PIN, INPUT_PULLUP);
   pinMode(IR_SENSOR_PIN, INPUT);
-  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(EXT_ALARM, OUTPUT);
   lockServo.attach(SERVO_PIN);
 }
 
@@ -106,6 +90,10 @@ bool isFullyUnlocked() {
 
 // Move the lock to the unlocked position
 void moveToUnlockedPosition() {
+  // Serial.print("Front Limit switch: ");
+  // Serial.println(digitalRead(LOCK_EXTENDED_PIN));
+  // Serial.print("Back Limit switch: ");
+  // Serial.println(digitalRead(LOCK_RETRACTED_PIN));
   Serial.println("Initial state ambiguous. Moving to unlocked position...");
   while (!isFullyUnlocked()) {
     lockServo.write(SERVO_UNLOCK_POSITION);
@@ -170,36 +158,65 @@ void processCard(const String& cardID) {
 
 // Unlock the lock
 void unlock() {
+  Serial.print("Front Limit switch: ");
+  Serial.println(digitalRead(LOCK_EXTENDED_PIN));
+  Serial.print("Back Limit switch: ");
+  Serial.println(digitalRead(LOCK_RETRACTED_PIN));
   Serial.println("Correct RFID tag detected! Unlocking...");
+  digitalWrite(GREEN_LED_PIN, LOW);
   while (!isFullyUnlocked()) {
-    lockServo.write(SERVO_UNLOCK_POSITION);
     blinkLEDsAndBuzzer();
+    lockServo.write(SERVO_UNLOCK_POSITION);
+    
   }
   // Stop the buzzer after locking
-  digitalWrite(BUZZER_PIN, LOW);
-  digitalWrite(GREEN_LED_PIN, LOW);
+  // digitalWrite(BUZZER_PIN, LOW);
   lockServo.write(SERVO_STOP);
   isLocked = false;
   Serial.println("Unlocked!");
+  delay(50);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(50);
+  digitalWrite(BUZZER_PIN, LOW);
+  delay(50);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(50);
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+  
 }
 
 // Lock the lock
 void lock() {
+  Serial.print("Front Limit switch: ");
+  Serial.println(digitalRead(LOCK_EXTENDED_PIN));
+  Serial.print("Back Limit switch: ");
+  Serial.println(digitalRead(LOCK_RETRACTED_PIN));
   Serial.println("Correct RFID tag detected! Locking...");
+  //digitalWrite(GREEN_LED_PIN, HIGH);
   while (!isFullyLocked()) {
     if (isObstacleDetected()) {
       Serial.println("Obstacle detected during locking! Stopping.");
       lockServo.write(SERVO_STOP);
+      delay(1000);
+      moveToUnlockedPosition();
       return;
     }
-    lockServo.write(SERVO_LOCK_POSITION);
     blinkLEDsAndBuzzer();
+    lockServo.write(SERVO_LOCK_POSITION);
   }
   lockServo.write(SERVO_STOP);
   isLocked = true;
   Serial.println("Locked!");
 
-  // Stop the buzzer after locking
+  // Stop buzzer only after locking
+  delay(50);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(50);
+  digitalWrite(BUZZER_PIN, LOW);
+  delay(50);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(50);
   digitalWrite(BUZZER_PIN, LOW);
   digitalWrite(GREEN_LED_PIN, HIGH);
 }
@@ -227,9 +244,26 @@ bool isObstacleDetected() {
 
 // Indicate locking disabled
 void indicateLockingDisabled() {
-  for (int i = 0; i < 3; i++) {
-    blinkRedLEDAndBuzzer();
-  }
+  // for (int i = 0; i < 2; i++) {
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(50);
+    digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(RED_LED_PIN, LOW);
+    delay(70);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(50);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(70);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(150);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+    // blinkRedLEDAndBuzzer();
+  // }
 }
 
 // Indicate an incorrect card was scanned
@@ -237,26 +271,82 @@ void indicateIncorrectCard() {
   Serial.println("Incorrect RFID tag.");
   for (int i = 0; i < 10; i++) {
     blinkRedLEDAndBuzzer();
-    digitalWrite(RELAY_PIN, HIGH);
+    digitalWrite(EXT_ALARM, HIGH);
     delay(100);
-    digitalWrite(RELAY_PIN, LOW);
+    digitalWrite(EXT_ALARM, LOW);
   }
 }
 
 // Indicate an obstacle was detected
 void indicateObstacleDetected() {
   Serial.println("Obstacle detected.");
-  for (int i = 0; i < 4; i++) {
-    blinkRedLEDAndBuzzer();
-  }
+
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(300);
+    digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(RED_LED_PIN, LOW);
+    delay(50);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(50);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(50);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(50);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+   
 }
 
 // Blink red LED and buzzer with delay
 void blinkRedLEDAndBuzzer() {
   digitalWrite(RED_LED_PIN, HIGH);
   digitalWrite(BUZZER_PIN, HIGH);
-  delay(BLINK_INTERVAL);
+  delay(1000);
   digitalWrite(RED_LED_PIN, LOW);
   digitalWrite(BUZZER_PIN, LOW);
-  delay(BLINK_INTERVAL);
+  delay(700);
+}
+
+
+void setup() {
+  initializePins();
+  initializeSerialAndRFID();
+  
+  Serial.print("Pin State ");
+  Serial.println(digitalRead(LOCK_DISABLE_PIN));
+  Serial.print("Front Limit switch: ");
+  Serial.println(digitalRead(LOCK_EXTENDED_PIN));
+  Serial.print("Back Limit switch: ");
+  Serial.println(digitalRead(LOCK_RETRACTED_PIN));
+
+  determineInitialLockState();
+  Serial.println("Place your RFID tag on the reader...");
+
+
+}
+
+void loop() {
+  // while (isLocked) {
+    if (digitalRead(LOCK_DISABLE_PIN) == HIGH && isLocked){
+      for(int i = 0; i < 10; i++){
+        digitalWrite(BUZZER_PIN, HIGH);
+        digitalWrite(RED_LED_PIN, HIGH);
+        delay(50);
+        digitalWrite(BUZZER_PIN, LOW);
+        digitalWrite(RED_LED_PIN, LOW);
+        delay(50);
+      }
+    } else {
+      digitalWrite(BUZZER_PIN, LOW);
+      digitalWrite(RED_LED_PIN, LOW);
+    }
+  // }
+  if (isNewCardPresent() && readCardSerial()) {
+    String cardID = getCardID();
+    processCard(cardID);
+  }
 }
