@@ -21,6 +21,7 @@ const int RST_PIN = 9;             // Reset pin for RFID module
 const int GREEN_LED_PIN = A4;      // Green LED indicator pin
 const int RED_LED_PIN = 2;         // Red LED indicator pin
 const int SERVO_PIN = 3;           // Servo control pin
+const int IR_SENSOR_PIN = 6;
 const int LOCK_EXTENDED_PIN = 4;   // Limit switch pin for fully locked position
 const int LOCK_RETRACTED_PIN = 5;  // Limit switch pin for fully unlocked position
 const int LOCK_DISABLE_PIN = 7;    // To disable lock system when the machine is ON
