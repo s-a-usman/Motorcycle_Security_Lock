@@ -18,7 +18,7 @@
 // Pin definitions
 const int SS_PIN = 10;             // SPI SS pin for RFID module
 const int RST_PIN = 9;             // Reset pin for RFID module
-const int GREEN_LED_PIN = A4;      // Green LED indicator pin
+const int GREEN_LED_PIN = 8;      // Green LED indicator pin
 const int RED_LED_PIN = 2;         // Red LED indicator pin
 const int SERVO_PIN = 3;           // Servo control pin
 const int IR_SENSOR_PIN = 6;
