@@ -197,6 +197,8 @@ void lock() {
     }
     blinkLEDAndBuzzer();
     lockServo.write(SERVO_LOCK_POSITION);
+    digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(GREEN_LED_PIN, LOW);
   }
   lockServo.write(SERVO_STOP);
   isLocked = true;
